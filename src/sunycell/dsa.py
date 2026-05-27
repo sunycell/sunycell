@@ -411,8 +411,9 @@ def tile_polygon(slide_resolution: float,
                  polygon: Union[Polygon, MultiPolygon],
                  tile_size: int = 1024,
                  target_mpp: Union[float, None] = None,
+                 stride: Union[int, float, None] = None,
                  edges: str = "within") -> list:
-    """Retrieve a list of non-overlapping tiles within a surrounding polygon.
+    """Retrieve a list of possibly overlapping tiles within a surrounding polygon.
 
     Parameters
     ----------
@@ -427,9 +428,16 @@ def tile_polygon(slide_resolution: float,
         slide resolution.
     edges : {'within', 'overlaps', 'both'}
         How to handle tiles at the border of the defining polygon.
-        - 'within': retrieves all tiles that lie strictly inside the borders.
-        - 'overlaps': retrieves only tiles overlapping the border.
-        - 'both': retrieves tiles within the polygon, extending beyond borders.
+    stride : int, float, or None
+        Step size between tile origins.
+
+        If None, uses non-overlapping tiles.
+
+        If 0 < stride < 1, it is interpreted as a fraction of tile_size.
+        Example: stride=0.5 gives 50% overlap.
+
+        If stride >= 1, it is interpreted as an absolute stride in output
+        tile pixels before conversion to slide-resolution coordinates.
 
     Returns
     -------
@@ -437,45 +445,63 @@ def tile_polygon(slide_resolution: float,
         List of the tile polygon objects in shapely format.
     """
 
-    assert edges in ['within', 'overlaps', 'both'], f'{edges} is not a valid overlap designation, use "within", "overlaps", or "both".'
+    assert edges in ['within', 'overlaps', 'both'], (
+        f'{edges} is not a valid overlap designation, use "within", "overlaps", or "both".'
+    )
 
-    # Get the base resolution of the image
-
-    # Calculate the difference between target and base
     if target_mpp is None:
         target_mpp = slide_resolution
 
     mpp_ratio = target_mpp / slide_resolution
     mod_tile_size = int(np.ceil(tile_size * mpp_ratio))
 
-    # Get the bounding box of the polygon
-    (minx, miny, maxx, maxy) = polygon.bounds
+    if stride is None:
+        mod_stride = mod_tile_size
+    else:
+        stride = float(stride)
 
-    # For the whole slide, using the image metadata to define boundaries
-    left_coords = np.arange(minx, maxx, mod_tile_size)
-    top_coords = np.arange(miny, maxy, mod_tile_size)
+        if stride <= 0:
+            raise ValueError("stride must be > 0")
+
+        if stride < 1:
+            # Fractional stride, e.g. 0.5 means move half a tile each step.
+            mod_stride = int(np.ceil(tile_size * stride * mpp_ratio))
+        else:
+            # Absolute stride in output tile pixels.
+            mod_stride = int(np.ceil(stride * mpp_ratio))
+
+    mod_stride = max(1, mod_stride)
+
+    # Get the bounding box of the polygon
+    minx, miny, maxx, maxy = polygon.bounds
+
+    # Use stride instead of tile size for overlapping tiles
+    left_coords = np.arange(minx, maxx, mod_stride)
+    top_coords = np.arange(miny, maxy, mod_stride)
 
     tile_polygons = []
+
+    polygon_union = unary_union(polygon)
 
     for col in left_coords:
         for row in top_coords:
             tile_polygon = Polygon([
                 (col, row),
-                (col, row+mod_tile_size),
-                (col+mod_tile_size, row+mod_tile_size),
-                (col+mod_tile_size, row)])
-            # If the edges type is "within", ensure this one is valid
+                (col, row + mod_tile_size),
+                (col + mod_tile_size, row + mod_tile_size),
+                (col + mod_tile_size, row)
+            ])
+
             if edges == "within":
-                # The tiles must be STRICTLY within the polygon (within and not overlap)
-                if tile_polygon.within(unary_union(polygon)) and not tile_polygon.overlaps(unary_union(polygon)):
+                if tile_polygon.within(polygon_union) and not tile_polygon.overlaps(polygon_union):
                     tile_polygons.append(tile_polygon)
+
             elif edges == "overlaps":
-                # Tile must either overlap and not be within the shape
-                if tile_polygon.overlaps(unary_union(polygon)) and not tile_polygon.within(unary_union(polygon)):
+                if tile_polygon.overlaps(polygon_union) and not tile_polygon.within(polygon_union):
                     tile_polygons.append(tile_polygon)
+
             elif edges == "both":
-                # Tile can either overlap or be within the shape
-                if tile_polygon.overlaps(unary_union(polygon)) or tile_polygon.within(unary_union(polygon)):
+                if tile_polygon.overlaps(polygon_union) or tile_polygon.within(polygon_union):
                     tile_polygons.append(tile_polygon)
 
     return tile_polygons
