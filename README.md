@@ -19,20 +19,14 @@ The main dependency of the software is [histomicstk](https://github.com/DigitalS
 There are some other utilities required as well, like `python-dotenv` for loading your secrets / API keys. 
 See the `src/setup.py` for details.
 
-### CCR Installation
+## Apptainer Installation
 
-Running the SUNYCell package on the Center for Computational Research system requires the use of the easybuild system for setting up modules.
-Please follow instructions [here](https://docs.ccr.buffalo.edu/en/latest/software/building/) for more details.
-In short:
-- Create a new tagged release on GitHub
-- Copy and edit the sunycell easybuild recipie
-    - Update the version numbers and hashes for the new release
-- Run the following:
+To add this software package to your Apptainer's `.def` file, add the following lines to the build instructions somewhere after `%post`:
 
 ```
-module load easybuild
-export CCR_BUILD_PREFIX=/projects/academic/scottdoy/easybuild
-eb sunycell-<semver>-foss-2021b.eb
+python -m pip install 'large-image[all]' --find-links https://girder.github.io/large_image_wheels
+python -m pip install histomicstk --find-links https://girder.github.io/large_image_wheels
+python -m pip install git+https://github.com/sunycell/sunycell#subdirectory=src
 ```
 
 You may need to do some troubleshooting if the system changes in the future.
