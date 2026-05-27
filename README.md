@@ -19,6 +19,18 @@ The main dependency of the software is [histomicstk](https://github.com/DigitalS
 There are some other utilities required as well, like `python-dotenv` for loading your secrets / API keys. 
 See the `src/setup.py` for details.
 
+## Apptainer Installation
+
+To add this software package to your Apptainer's `.def` file, add the following lines to the build instructions somewhere after `%post`:
+
+```
+python -m pip install 'large-image[all]' --find-links https://girder.github.io/large_image_wheels
+python -m pip install histomicstk --find-links https://girder.github.io/large_image_wheels
+python -m pip install git+https://github.com/sunycell/sunycell#subdirectory=src
+```
+
+You may need to do some troubleshooting if the system changes in the future.
+
 ## Running Examples
 
 In order to access files on the SUNYCell DSA, you'll need to create a `.env` file somewhere in your project directory. 
